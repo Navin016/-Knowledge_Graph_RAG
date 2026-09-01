@@ -1,0 +1,8 @@
+pdfplumber
+langchain-text-splitters
+google-genai
+python-dotenv
+pydantic
+sentence-transformers
+scikit-learn
+numpy

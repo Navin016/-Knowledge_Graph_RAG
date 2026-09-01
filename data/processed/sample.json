@@ -1,0 +1,328 @@
+{
+  "cache_version": 1,
+  "source_file": "sample.pdf",
+  "total_characters": 4004,
+  "chunk_size": 1000,
+  "overlap": 150,
+  "total_chunks": 5,
+  "successful_chunks": 5,
+  "failed_chunks": 0,
+  "total_triples": 56,
+  "chunks": [
+    {
+      "chunk_id": 1,
+      "text": "An Introduction to Knowledge Graphs and\nRetrieval-Augmented Generation\n1. Graph Databases\nNeo4j is a graph database that stores information as nodes and relationships instead of tables.\nNeo4j uses Cypher as its query language, which lets developers describe graph patterns directly\nin a query. The Neo4j graph database also supports a native vector index, which allows it to\nstore both structured graph data and dense vector embeddings in a single system.\nCypher is a declarative query language developed for Neo4j. Cypher supports the MERGE\noperation, which creates a node or relationship only if it does not already exist, making repeated\nwrites idempotent.\n2. Large Language Models\nGemini is a family of large language models developed by Google. Gemini Flash is a faster,\nlighter variant of Gemini optimized for high-throughput tasks such as entity extraction. Gemini\ncan be accessed through an API and integrated into applications using frameworks such as\nLangChain.",
+      "status": "success",
+      "triples": [
+        {
+          "subject": "Neo4j",
+          "relation": "is_a",
+          "object": "graph database"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "uses",
+          "object": "Cypher"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "supports",
+          "object": "native vector index"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "stores",
+          "object": "structured graph data"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "stores",
+          "object": "dense vector embeddings"
+        },
+        {
+          "subject": "Cypher",
+          "relation": "is_a",
+          "object": "declarative query language"
+        },
+        {
+          "subject": "Cypher",
+          "relation": "supports",
+          "object": "MERGE operation"
+        },
+        {
+          "subject": "Gemini",
+          "relation": "is_a",
+          "object": "large language model"
+        },
+        {
+          "subject": "Gemini",
+          "relation": "developed_by",
+          "object": "Google"
+        },
+        {
+          "subject": "Gemini Flash",
+          "relation": "is_a",
+          "object": "variant of Gemini"
+        },
+        {
+          "subject": "Gemini",
+          "relation": "integrates_with",
+          "object": "LangChain"
+        }
+      ]
+    },
+    {
+      "chunk_id": 2,
+      "text": "can be accessed through an API and integrated into applications using frameworks such as\nLangChain.\nLangChain is a Python framework that manages prompt orchestration, chaining, and integration\nwith external tools. LangChain provides a component called GraphCypherQAChain, which\nconverts a natural language question into a Cypher query and executes it against a graph\ndatabase such as Neo4j.\n3. Embeddings and Entity Resolution\nSentence embeddings represent text as dense numerical vectors, allowing semantically similar\ntext to be compared using distance metrics. The all-MiniLM-L6-v2 model is a lightweight\nsentence embedding model trained by the Sentence-Transformers project. The MiniLM model\nproduces 384-dimensional vectors and runs efficiently on a standard laptop CPU.\nEntity resolution is the process of identifying when two different text mentions refer to the same\nreal-world entity. Cosine similarity is commonly used to compare embeddings during entity",
+      "status": "success",
+      "triples": [
+        {
+          "subject": "LangChain",
+          "relation": "is_a",
+          "object": "Python framework"
+        },
+        {
+          "subject": "LangChain",
+          "relation": "provides",
+          "object": "GraphCypherQAChain"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "is_a",
+          "object": "graph database"
+        },
+        {
+          "subject": "all-MiniLM-L6-v2",
+          "relation": "is_a",
+          "object": "sentence embedding model"
+        },
+        {
+          "subject": "all-MiniLM-L6-v2",
+          "relation": "created_by",
+          "object": "Sentence-Transformers project"
+        },
+        {
+          "subject": "MiniLM model",
+          "relation": "produces",
+          "object": "384-dimensional vectors"
+        },
+        {
+          "subject": "Cosine similarity",
+          "relation": "used_for",
+          "object": "comparing embeddings"
+        }
+      ]
+    },
+    {
+      "chunk_id": 3,
+      "text": "real-world entity. Cosine similarity is commonly used to compare embeddings during entity\nresolution, since it measures the angle between two vectors rather than their magnitude.\n4. Retrieval-Augmented Generation\nRetrieval-Augmented Generation, commonly abbreviated as RAG, combines information\nretrieval with text generation. A RAG system retrieves relevant context before asking a language\nmodel to generate an answer, which reduces hallucination compared to using a language model\nalone.\nGraphRAG extends traditional RAG by retrieving information from a knowledge graph instead of,\nor in addition to, plain text passages. Hybrid retrieval systems combine graph-based retrieval\nwith vector-based semantic search to improve answer accuracy.\n5. Application Framework and Visualization\nFastAPI is a Python web framework used to build APIs. FastAPI is built on top of Starlette and\nuses Pydantic for data validation. The FastAPI framework automatically generates interactive",
+      "status": "success",
+      "triples": [
+        {
+          "subject": "Cosine similarity",
+          "relation": "used_for",
+          "object": "entity resolution"
+        },
+        {
+          "subject": "Retrieval-Augmented Generation",
+          "relation": "related_to",
+          "object": "RAG"
+        },
+        {
+          "subject": "Retrieval-Augmented Generation",
+          "relation": "combines",
+          "object": "information retrieval"
+        },
+        {
+          "subject": "Retrieval-Augmented Generation",
+          "relation": "combines",
+          "object": "text generation"
+        },
+        {
+          "subject": "GraphRAG",
+          "relation": "extends",
+          "object": "traditional RAG"
+        },
+        {
+          "subject": "GraphRAG",
+          "relation": "retrieves_from",
+          "object": "knowledge graph"
+        },
+        {
+          "subject": "Hybrid retrieval systems",
+          "relation": "combine",
+          "object": "graph-based retrieval"
+        },
+        {
+          "subject": "Hybrid retrieval systems",
+          "relation": "combine",
+          "object": "vector-based semantic search"
+        },
+        {
+          "subject": "FastAPI",
+          "relation": "is_a",
+          "object": "Python web framework"
+        },
+        {
+          "subject": "FastAPI",
+          "relation": "used_for",
+          "object": "building APIs"
+        },
+        {
+          "subject": "FastAPI",
+          "relation": "depends_on",
+          "object": "Starlette"
+        },
+        {
+          "subject": "FastAPI",
+          "relation": "uses",
+          "object": "Pydantic"
+        },
+        {
+          "subject": "Pydantic",
+          "relation": "used_for",
+          "object": "data validation"
+        }
+      ]
+    },
+    {
+      "chunk_id": 4,
+      "text": "uses Pydantic for data validation. The FastAPI framework automatically generates interactive\nAPI documentation, which is useful for testing endpoints during development.\nD3.js is a JavaScript library used for creating interactive data visualizations in a web browser.\nD3.js is commonly used to render force-directed graphs, which are well suited for displaying\nentities and relationships extracted from a knowledge graph.\npdfplumber is a Python library used to extract text and tables from PDF documents. pdfplumber\npreserves page layout information, which makes it well suited for processing technical\ndocuments that contain tables.\n6. Summary\nA modern knowledge graph platform typically combines several components: a document parser\nsuch as pdfplumber, a large language model such as Gemini for entity extraction, an embedding\nmodel such as all-MiniLM-L6-v2 for entity resolution, a graph database such as Neo4j for",
+      "status": "success",
+      "triples": [
+        {
+          "subject": "FastAPI",
+          "relation": "uses",
+          "object": "Pydantic"
+        },
+        {
+          "subject": "Pydantic",
+          "relation": "used_for",
+          "object": "data validation"
+        },
+        {
+          "subject": "FastAPI",
+          "relation": "provides",
+          "object": "interactive API documentation"
+        },
+        {
+          "subject": "D3.js",
+          "relation": "is_a",
+          "object": "JavaScript library"
+        },
+        {
+          "subject": "D3.js",
+          "relation": "used_for",
+          "object": "creating interactive data visualizations"
+        },
+        {
+          "subject": "D3.js",
+          "relation": "renders",
+          "object": "force-directed graphs"
+        },
+        {
+          "subject": "force-directed graphs",
+          "relation": "displays",
+          "object": "entities and relationships"
+        },
+        {
+          "subject": "pdfplumber",
+          "relation": "is_a",
+          "object": "Python library"
+        },
+        {
+          "subject": "pdfplumber",
+          "relation": "extracts",
+          "object": "text and tables from PDF documents"
+        },
+        {
+          "subject": "pdfplumber",
+          "relation": "preserves",
+          "object": "page layout information"
+        },
+        {
+          "subject": "pdfplumber",
+          "relation": "is_a",
+          "object": "document parser"
+        },
+        {
+          "subject": "Gemini",
+          "relation": "is_a",
+          "object": "large language model"
+        },
+        {
+          "subject": "Gemini",
+          "relation": "used_for",
+          "object": "entity extraction"
+        },
+        {
+          "subject": "all-MiniLM-L6-v2",
+          "relation": "is_a",
+          "object": "embedding model"
+        },
+        {
+          "subject": "all-MiniLM-L6-v2",
+          "relation": "used_for",
+          "object": "entity resolution"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "is_a",
+          "object": "graph database"
+        }
+      ]
+    },
+    {
+      "chunk_id": 5,
+      "text": "model such as all-MiniLM-L6-v2 for entity resolution, a graph database such as Neo4j for\nstorage, a retrieval framework such as LangChain for hybrid search, a backend framework such\nas FastAPI for serving results, and a visualization library such as D3.js for exploration.\nThis document intentionally repeats several terms in slightly different forms, such as 'Neo4j', 'the\nNeo4j graph database', and 'Neo4j graph database', as well as 'Gemini' and 'Gemini Flash', so\nthat it can also be used to test entity resolution logic later in the pipeline.",
+      "status": "success",
+      "triples": [
+        {
+          "subject": "all-MiniLM-L6-v2",
+          "relation": "is_a",
+          "object": "model"
+        },
+        {
+          "subject": "all-MiniLM-L6-v2",
+          "relation": "supports",
+          "object": "entity resolution"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "is_a",
+          "object": "graph database"
+        },
+        {
+          "subject": "Neo4j",
+          "relation": "provides",
+          "object": "storage"
+        },
+        {
+          "subject": "LangChain",
+          "relation": "is_a",
+          "object": "retrieval framework"
+        },
+        {
+          "subject": "LangChain",
+          "relation": "supports",
+          "object": "hybrid search"
+        },
+        {
+          "subject": "FastAPI",
+          "relation": "is_a",
+          "object": "backend framework"
+        },
+        {
+          "subject": "D3.js",
+          "relation": "is_a",
+          "object": "visualization library"
+        },
+        {
+          "subject": "D3.js",
+          "relation": "supports",
+          "object": "exploration"
+        }
+      ]
+    }
+  ]
+}
