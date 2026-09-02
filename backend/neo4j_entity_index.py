@@ -1,9 +1,7 @@
-from sentence_transformers import SentenceTransformer
-
+from backend.embedding_model import get_rag_embedding_model
 from backend.neo4j_client import Neo4jClient
 
 
-MODEL_NAME = "all-MiniLM-L6-v2"
 ENTITY_VECTOR_INDEX = "entity_name_vector"
 
 
@@ -38,10 +36,11 @@ def create_entity_vector_index(
 
 def embed_entities(
     client: Neo4jClient,
-    model: SentenceTransformer,
+    model,
 ):
     """
     Load every Entity name and create its embedding.
+
     Existing entities are updated; no new entities are created.
     """
 
@@ -131,7 +130,7 @@ def verify_entity_index(
         print()
         print("Entity vector index:")
         print(f"Name:             {record['name']}")
-        print(f"State:            {record['state']}")
+        print(f"State:             {record['state']}")
         print(f"Population:       {record['populationPercent']}%")
 
 
@@ -154,19 +153,10 @@ def main():
         )
 
         # -----------------------------------------------------
-        # Load embedding model
+        # Get shared RAG embedding model
         # -----------------------------------------------------
 
-        print()
-        print(
-            f"Loading embedding model: {MODEL_NAME}"
-        )
-
-        model = SentenceTransformer(
-            MODEL_NAME
-        )
-
-        print("Embedding model loaded.")
+        model = get_rag_embedding_model()
 
         # -----------------------------------------------------
         # Embed existing entities

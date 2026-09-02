@@ -1,7 +1,7 @@
 import re
 from typing import Any
 
-from sentence_transformers import SentenceTransformer
+from backend.embedding_model import get_rag_embedding_model
 
 from backend.neo4j_client import Neo4jClient
 
@@ -10,7 +10,7 @@ from backend.neo4j_client import Neo4jClient
 # CONFIGURATION
 # ============================================================
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+
 
 DEFAULT_ENTITY_K = 10
 DEFAULT_GRAPH_K = 5
@@ -355,7 +355,7 @@ def score_path(
 def rank_paths(
     paths: list[dict[str, Any]],
     query_embedding: list[float],
-    model: SentenceTransformer,
+    model,
     relevant_entity_names: set[str],
     top_k: int,
 ) -> list[dict[str, Any]]:
@@ -499,17 +499,10 @@ class GraphRetriever:
 
         self.client.driver.verify_connectivity()
 
-        print(
-            f"Loading graph retrieval model: {MODEL_NAME}"
-        )
+       
+        self.model = get_rag_embedding_model()
 
-        self.model = SentenceTransformer(
-            MODEL_NAME
-        )
-
-        print(
-            "Graph retrieval model loaded."
-        )
+       
 
     # ========================================================
     # SEARCH

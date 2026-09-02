@@ -3,7 +3,7 @@ import re
 import sys
 from pathlib import Path
 
-from sentence_transformers import SentenceTransformer
+from backend.embedding_model import get_rag_embedding_model
 
 from backend.neo4j_client import Neo4jClient
 
@@ -12,7 +12,6 @@ from backend.neo4j_client import Neo4jClient
 # CONFIGURATION
 # ============================================================
 
-VECTOR_MODEL_NAME = "all-MiniLM-L6-v2"
 
 DEFAULT_RESOLVED_FILE = (
     "data/processed/demo_normalized_resolved.json"
@@ -78,20 +77,8 @@ def load_json(path: str) -> dict:
 # ============================================================
 # EMBEDDING MODEL
 # ============================================================
-
 def load_vector_model():
-    print()
-    print("=" * 70)
-    print("Loading vector embedding model")
-    print("=" * 70)
-
-    print(f"Model: {VECTOR_MODEL_NAME}")
-
-    model = SentenceTransformer(VECTOR_MODEL_NAME)
-
-    print("Vector model loaded.")
-
-    return model
+    return get_rag_embedding_model()
 
 
 # ============================================================
@@ -199,7 +186,7 @@ def ingest_graph(
 def ingest_chunks(
     client: Neo4jClient,
     normalized_data: dict,
-    model: SentenceTransformer
+    model
 ):
     chunks = normalized_data.get("chunks", [])
 

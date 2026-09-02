@@ -1,4 +1,4 @@
-from sentence_transformers import SentenceTransformer
+from backend.embedding_model import get_rag_embedding_model
 
 from backend.neo4j_client import Neo4jClient
 
@@ -12,9 +12,9 @@ class VectorRetriever:
         self.top_k = top_k
         self.client = Neo4jClient()
 
-        print(f"Loading query embedding model: {MODEL_NAME}")
-        self.model = SentenceTransformer(MODEL_NAME)
-        print("Query embedding model loaded.")
+       
+        self.model = get_rag_embedding_model()
+        
 
     def search(self, query: str):
         """

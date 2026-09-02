@@ -204,7 +204,74 @@ Relevance score: {score:.4f}
         return "No graph evidence was retrieved."
 
     return "\n\n".join(sections)
+# ============================================================
+# GEMINI RESPONSE TEXT EXTRACTION
+# ============================================================
 
+def extract_response_text(response) -> str:
+    """
+    Safely extract plain text from a Gemini/LangChain response.
+
+    Gemini responses may expose content as:
+    - a plain string
+    - a list of content blocks
+    - dictionaries containing {"type": "text", "text": "..."}
+    """
+
+    content = getattr(response, "content", response)
+
+    # --------------------------------------------------------
+    # Case 1: plain string
+    # --------------------------------------------------------
+
+    if isinstance(content, str):
+        return content.strip()
+
+    # --------------------------------------------------------
+    # Case 2: list of content blocks
+    # --------------------------------------------------------
+
+    if isinstance(content, list):
+
+        text_parts = []
+
+        for block in content:
+
+            # Dictionary block
+            if isinstance(block, dict):
+
+                if block.get("type") == "text":
+                    text = block.get("text", "")
+
+                    if text:
+                        text_parts.append(
+                            str(text)
+                        )
+
+                # Some versions may not provide type
+                elif "text" in block:
+
+                    text = block.get("text", "")
+
+                    if text:
+                        text_parts.append(
+                            str(text)
+                        )
+
+            # String block
+            elif isinstance(block, str):
+
+                text_parts.append(block)
+
+        return "\n".join(
+            text_parts
+        ).strip()
+
+    # --------------------------------------------------------
+    # Case 3: fallback
+    # --------------------------------------------------------
+
+    return str(content).strip()
 
 # ============================================================
 # RAG SYSTEM
@@ -356,9 +423,9 @@ class RAGSystem:
             ]
         )
 
-        answer_text = str(
-            response.content
-        ).strip()
+        answer_text = extract_response_text(
+            response
+        )   
 
         return {
             "question": question,

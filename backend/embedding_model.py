@@ -1,7 +1,7 @@
 """
 backend/embedding_model.py
 
-Shared ML models used by the KG pipeline.
+Shared ML models used by the KG-RAG pipeline.
 
 Models:
 
@@ -11,7 +11,11 @@ Models:
 2. Cross encoder
    BAAI/bge-reranker-base
 
-The models are loaded lazily and only once.
+3. RAG/vector embedding model
+   all-MiniLM-L6-v2
+
+All models are loaded lazily and only once per
+Python process.
 """
 
 from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -21,48 +25,52 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 # Configuration
 # =========================================================
 
-EMBEDDING_MODEL_NAME = "BAAI/bge-base-en-v1.5"
+ENTITY_EMBEDDING_MODEL_NAME = "BAAI/bge-base-en-v1.5"
 
 CROSS_ENCODER_MODEL_NAME = "BAAI/bge-reranker-base"
+
+RAG_EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
 
 # =========================================================
 # Singleton instances
 # =========================================================
 
-_embedding_model = None
+_entity_embedding_model = None
 _cross_encoder = None
+_rag_embedding_model = None
 
 
 # =========================================================
-# Embedding model
+# Entity embedding model
 # =========================================================
 
 def get_embedding_model() -> SentenceTransformer:
     """
     Return the shared BGE embedding model.
 
-    The model is downloaded/loaded only on first use.
+    Used by Entity Resolution.
+    Loaded only on first use.
     """
 
-    global _embedding_model
+    global _entity_embedding_model
 
-    if _embedding_model is None:
-
-        print(
-            f"Loading embedding model: "
-            f"{EMBEDDING_MODEL_NAME}"
-        )
-
-        _embedding_model = SentenceTransformer(
-            EMBEDDING_MODEL_NAME
-        )
+    if _entity_embedding_model is None:
 
         print(
-            "Embedding model loaded."
+            f"Loading entity embedding model: "
+            f"{ENTITY_EMBEDDING_MODEL_NAME}"
         )
 
-    return _embedding_model
+        _entity_embedding_model = SentenceTransformer(
+            ENTITY_EMBEDDING_MODEL_NAME
+        )
+
+        print(
+            "Entity embedding model loaded."
+        )
+
+    return _entity_embedding_model
 
 
 # =========================================================
@@ -73,8 +81,8 @@ def get_cross_encoder() -> CrossEncoder:
     """
     Return the shared BGE reranker.
 
-    Loaded only when borderline entity pairs
-    require additional verification.
+    Used by Entity Resolution for borderline pairs.
+    Loaded only on first use.
     """
 
     global _cross_encoder
@@ -95,3 +103,41 @@ def get_cross_encoder() -> CrossEncoder:
         )
 
     return _cross_encoder
+
+
+# =========================================================
+# RAG embedding model
+# =========================================================
+
+def get_rag_embedding_model() -> SentenceTransformer:
+    """
+    Return the shared MiniLM embedding model.
+
+    Used for:
+
+    - Chunk vector embeddings
+    - Entity vector embeddings
+    - Query embeddings
+    - Graph-path semantic ranking
+
+    Loaded only on first use.
+    """
+
+    global _rag_embedding_model
+
+    if _rag_embedding_model is None:
+
+        print(
+            f"Loading RAG embedding model: "
+            f"{RAG_EMBEDDING_MODEL_NAME}"
+        )
+
+        _rag_embedding_model = SentenceTransformer(
+            RAG_EMBEDDING_MODEL_NAME
+        )
+
+        print(
+            "RAG embedding model loaded."
+        )
+
+    return _rag_embedding_model
