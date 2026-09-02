@@ -6,3 +6,6 @@ pydantic
 sentence-transformers
 scikit-learn
 numpy
+rapidfuzz
+langchain-google-genai
+langchain-neo4j

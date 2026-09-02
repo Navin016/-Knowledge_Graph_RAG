@@ -1,61 +1,97 @@
 """
 backend/embedding_model.py
 
-Shared embedding model for the project.
+Shared ML models used by the KG pipeline.
 
-Currently:
-    all-MiniLM-L6-v2
+Models:
 
-The model is loaded only once and reused by:
+1. Entity embedding model
+   BAAI/bge-base-en-v1.5
 
-    relation_normalizer.py
-    entity_resolution.py
-    retrieval.py
+2. Cross encoder
+   BAAI/bge-reranker-base
 
-This avoids loading the same model multiple times.
+The models are loaded lazily and only once.
 """
 
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
 
 # =========================================================
 # Configuration
 # =========================================================
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "BAAI/bge-base-en-v1.5"
+
+CROSS_ENCODER_MODEL_NAME = "BAAI/bge-reranker-base"
 
 
 # =========================================================
-# Singleton model
+# Singleton instances
 # =========================================================
 
-_model = None
+_embedding_model = None
+_cross_encoder = None
 
+
+# =========================================================
+# Embedding model
+# =========================================================
 
 def get_embedding_model() -> SentenceTransformer:
     """
-    Return the shared SentenceTransformer model.
+    Return the shared BGE embedding model.
 
-    The model is loaded only on the first call.
-
-    Returns:
-        Shared SentenceTransformer instance.
+    The model is downloaded/loaded only on first use.
     """
 
-    global _model
+    global _embedding_model
 
-    if _model is None:
+    if _embedding_model is None:
 
         print(
-            f"Loading embedding model: {MODEL_NAME}"
+            f"Loading embedding model: "
+            f"{EMBEDDING_MODEL_NAME}"
         )
 
-        _model = SentenceTransformer(
-            MODEL_NAME
+        _embedding_model = SentenceTransformer(
+            EMBEDDING_MODEL_NAME
         )
 
         print(
             "Embedding model loaded."
         )
 
-    return _model
+    return _embedding_model
+
+
+# =========================================================
+# Cross encoder
+# =========================================================
+
+def get_cross_encoder() -> CrossEncoder:
+    """
+    Return the shared BGE reranker.
+
+    Loaded only when borderline entity pairs
+    require additional verification.
+    """
+
+    global _cross_encoder
+
+    if _cross_encoder is None:
+
+        print(
+            f"Loading cross-encoder: "
+            f"{CROSS_ENCODER_MODEL_NAME}"
+        )
+
+        _cross_encoder = CrossEncoder(
+            CROSS_ENCODER_MODEL_NAME
+        )
+
+        print(
+            "Cross-encoder loaded."
+        )
+
+    return _cross_encoder

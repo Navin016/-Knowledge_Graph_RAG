@@ -53,8 +53,8 @@ from backend.pdf_processor import extract_text
 # Configuration
 # ---------------------------------------------------------
 
-DEFAULT_CHUNK_SIZE = 1000
-DEFAULT_OVERLAP = 150
+DEFAULT_CHUNK_SIZE = 2500
+DEFAULT_OVERLAP = 300
 
 
 # ---------------------------------------------------------

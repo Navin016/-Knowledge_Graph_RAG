@@ -2,3 +2,115 @@
 venv/
 __pycache__/
 frontend/node_modules/
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python packaging
+*.egg-info/
+.eggs/
+dist/
+build/
+wheels/
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ============================================================
+# Environment / Secrets
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# API keys / credentials
+*.pem
+*.key
+*.crt
+
+# ============================================================
+# Hugging Face / ML caches
+# ============================================================
+
+.cache/
+huggingface/
+models/
+checkpoints/
+
+# Common Hugging Face cache locations
+**/.cache/huggingface/
+
+# Sentence Transformers cache
+**/.cache/torch/
+**/torch/
+
+# ============================================================
+# Project-generated data
+# ============================================================
+
+# Processed/generated pipeline output
+data/processed/
+
+# Raw PDFs / user documents
+data/raw/
+
+# Vector databases / local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# ============================================================
+# Neo4j local files
+# ============================================================
+
+neo4j/
+.neo4j/
+
+# ============================================================
+# IDE / Editor
+# ============================================================
+
+.vscode/
+.idea/
+*.iml
+
+# ============================================================
+# OS
+# ============================================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ============================================================
+# Temporary files
+# ============================================================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
