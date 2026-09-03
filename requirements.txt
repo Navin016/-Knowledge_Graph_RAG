@@ -9,3 +9,6 @@ numpy
 rapidfuzz
 langchain-google-genai
 langchain-neo4j
+fastapi
+uvicorn[standard]
+python-multipart
