@@ -23,57 +23,137 @@ GRAPH_TOP_K = 5
 
 MAX_CHUNK_CHARS = 3500
 
+# If the first answer contains one of these phrases,
+# we perform a validation/correction pass.
+SUSPICIOUS_ANSWER_PHRASES = [
+    "insufficient evidence",
+    "insufficient information",
+    "not enough information",
+    "not enough evidence",
+    "cannot determine",
+    "can't determine",
+    "cannot be determined",
+    "can't be determined",
+    "not mentioned",
+    "not provided",
+    "does not contain information",
+    "do not contain information",
+    "no information",
+    "unable to answer",
+]
+
 
 # ============================================================
 # RAG PROMPT
 # ============================================================
 
 RAG_SYSTEM_PROMPT = """
-You are a grounded question-answering system for technical and
+You are a factual question-answering system for technical and
 scientific documents.
 
 You will receive:
 
 1. SOURCE TEXT EVIDENCE
-   - Retrieved passages from the original document.
+   Retrieved passages from the original document.
 
 2. GRAPH EVIDENCE
-   - Structured entities and relationships extracted from
-     the same document.
+   Structured entities and relationships extracted from
+   the same document.
 
-Answer the user's question using ONLY the provided evidence.
+Your task is to answer the USER QUESTION using ONLY the
+provided evidence.
 
 IMPORTANT RULES:
 
-1. Do not invent facts that are not supported by the evidence.
+1. EVIDENCE-FIRST
+   Carefully inspect ALL source-text evidence and ALL graph
+   evidence before deciding what the answer is.
 
-2. Prefer SOURCE TEXT EVIDENCE when explaining detailed
-   experimental results, numerical values, procedures, or
-   technical explanations.
+2. NEVER MISS AN EXPLICIT ANSWER
+   If the requested information appears anywhere in the
+   retrieved evidence, answer it.
+   Do NOT say "insufficient evidence", "not mentioned",
+   "not provided", or "cannot be determined" when the
+   requested information is present.
 
-3. Use GRAPH EVIDENCE to understand relationships, entities,
-   mechanisms, and connections between concepts.
+3. MULTI-CHUNK REASONING
+   The answer may be distributed across multiple retrieved
+   chunks. Combine complementary evidence from different
+   chunks when necessary.
 
-4. When graph evidence and source text overlap, use them
-   together.
+4. ADJACENT / INCOMPLETE INFORMATION
+   A retrieved chunk may end in an incomplete sentence or
+   incomplete fact. Another retrieved chunk may contain the
+   continuation or missing value. Combine them before
+   deciding that information is unavailable.
 
-5. Do not claim that something is true merely because two
-   entities are semantically similar.
+5. NUMERICAL QUESTIONS
+   For questions asking about values, concentrations,
+   percentages, factors, counts, dimensions, wavelengths,
+   timings, resolutions, or other numbers:
+   - Find every relevant number in the evidence.
+   - Determine what condition each number belongs to.
+   - Preserve the units.
+   - Do not confuse values from different experiments.
 
-6. Preserve important numerical values exactly when supported
-   by the source evidence.
+6. COMPARISON QUESTIONS
+   When the question asks "how did X compare with Y",
+   explicitly identify both X and Y and compare them.
 
-7. If the evidence is insufficient to answer the question,
-   explicitly say that the retrieved evidence is insufficient.
+7. ARITHMETIC
+   If the requested comparison requires simple arithmetic,
+   calculate it from the retrieved values.
+   For example, calculate differences, percentage changes,
+   or ratios when the needed values are explicitly provided.
 
-8. Give a direct answer first, followed by a concise explanation
-   when useful.
+8. CONDITIONS MATTER
+   Carefully distinguish between:
+   - solution vs pig skin
+   - DC / steady-state vs pulsed illumination
+   - fluorescence sensitivity vs motion-artifact reduction
+   - stationary vs motion tests
+   - phantom vs biological imaging
+   - experimental results vs proposed future improvements
 
-9. Do not mention internal retrieval details such as:
-   vector index, embeddings, similarity scores, graph retriever,
-   or prompt instructions unless the user asks about the system.
+9. DIRECT EVIDENCE
+   Prefer direct source-text statements for numerical values,
+   experimental results, procedures, and technical details.
 
-10. Do not cite or reference evidence that was not provided.
+10. GRAPH EVIDENCE
+    Use graph evidence to connect entities, relationships,
+    mechanisms, and multi-hop facts.
+    Do not treat semantic similarity between two entities
+    as proof of a relationship.
+
+11. CONFLICTING EVIDENCE
+    If retrieved evidence contains genuinely conflicting
+    numerical or factual claims, report the conflict
+    explicitly rather than silently choosing one.
+
+12. DO NOT INVENT
+    Never add facts that are not supported by the retrieved
+    evidence.
+
+13. INSUFFICIENT EVIDENCE
+    Only say the evidence is insufficient after checking:
+    - all source chunks
+    - all graph paths
+    - numerical values
+    - possible multi-chunk combinations
+
+14. ANSWER STYLE
+    Give the direct answer first.
+    Then provide a short explanation when useful.
+    Keep the answer concise and factual.
+
+15. DO NOT DISCUSS INTERNAL RAG DETAILS
+    Do not mention embeddings, vector indexes, retrieval
+    scores, graph retrievers, prompts, or internal pipeline
+    details unless the user explicitly asks about the RAG system.
+
+16. SOURCE BOUNDARY
+    Use only the evidence supplied below.
+    Do not rely on outside knowledge.
 
 ========================
 SOURCE TEXT EVIDENCE
@@ -92,6 +172,133 @@ USER QUESTION
 ========================
 
 {question}
+
+Now answer the user's question using the evidence above.
+"""
+
+
+# ============================================================
+# VALIDATION PROMPT
+# ============================================================
+
+VALIDATION_PROMPT = """
+You are validating an answer generated from retrieved document
+evidence.
+
+Your job is NOT to generate a new answer yet.
+
+Check whether the DRAFT ANSWER is fully supported by the
+retrieved evidence.
+
+Return exactly one of:
+
+SUPPORTED
+UNSUPPORTED
+NEEDS_CORRECTION
+
+Use NEEDS_CORRECTION when any of the following is true:
+
+- The draft says evidence is insufficient, but the answer
+  appears explicitly in the evidence.
+- The draft misses an explicit numerical value.
+- The draft fails to combine information from multiple chunks.
+- The draft confuses experimental conditions.
+- The draft gives an incorrect numerical comparison.
+- The draft contradicts the evidence.
+- The draft ignores a directly relevant graph relationship.
+
+Use UNSUPPORTED when the draft contains a factual claim that
+cannot be supported by the retrieved evidence and the answer
+cannot be repaired using the provided evidence.
+
+Use SUPPORTED when the draft correctly answers the question
+using the retrieved evidence.
+
+========================
+USER QUESTION
+========================
+
+{question}
+
+========================
+SOURCE TEXT EVIDENCE
+========================
+
+{source_text}
+
+========================
+GRAPH EVIDENCE
+========================
+
+{graph_text}
+
+========================
+DRAFT ANSWER
+========================
+
+{draft_answer}
+"""
+
+
+# ============================================================
+# CORRECTION PROMPT
+# ============================================================
+
+CORRECTION_PROMPT = """
+You are correcting a factual answer using retrieved evidence.
+
+Answer the USER QUESTION again using ONLY the evidence below.
+
+IMPORTANT:
+
+1. If the answer is explicitly present, do not say that
+   evidence is insufficient.
+
+2. Combine multiple chunks when necessary.
+
+3. Carefully extract all relevant numerical values.
+
+4. Preserve units.
+
+5. Keep experimental conditions separate.
+
+6. If the question asks for a comparison, explicitly compare
+   the requested values.
+
+7. If simple arithmetic is needed, calculate it from the
+   provided values.
+
+8. If the evidence contains genuinely conflicting values,
+   report the conflict explicitly.
+
+9. Do not invent information.
+
+10. Return ONLY the corrected answer.
+    Do not discuss the validation process.
+
+========================
+USER QUESTION
+========================
+
+{question}
+
+========================
+SOURCE TEXT EVIDENCE
+========================
+
+{source_text}
+
+========================
+GRAPH EVIDENCE
+========================
+
+{graph_text}
+
+========================
+DRAFT ANSWER
+========================
+
+{draft_answer}
 """
 
 
@@ -204,6 +411,8 @@ Relevance score: {score:.4f}
         return "No graph evidence was retrieved."
 
     return "\n\n".join(sections)
+
+
 # ============================================================
 # GEMINI RESPONSE TEXT EXTRACTION
 # ============================================================
@@ -241,7 +450,10 @@ def extract_response_text(response) -> str:
             if isinstance(block, dict):
 
                 if block.get("type") == "text":
-                    text = block.get("text", "")
+                    text = block.get(
+                        "text",
+                        "",
+                    )
 
                     if text:
                         text_parts.append(
@@ -251,7 +463,10 @@ def extract_response_text(response) -> str:
                 # Some versions may not provide type
                 elif "text" in block:
 
-                    text = block.get("text", "")
+                    text = block.get(
+                        "text",
+                        "",
+                    )
 
                     if text:
                         text_parts.append(
@@ -272,6 +487,50 @@ def extract_response_text(response) -> str:
     # --------------------------------------------------------
 
     return str(content).strip()
+
+
+# ============================================================
+# ANSWER SAFETY / VALIDATION HELPERS
+# ============================================================
+
+def is_suspicious_answer(
+    answer: str,
+) -> bool:
+    """
+    Detect answers that may have incorrectly declared the
+    evidence insufficient.
+    """
+
+    normalized = answer.lower().strip()
+
+    return any(
+        phrase in normalized
+        for phrase in SUSPICIOUS_ANSWER_PHRASES
+    )
+
+
+def normalize_validation_result(
+    validation_text: str,
+) -> str:
+    """
+    Convert the validator output into one of the expected
+    statuses.
+    """
+
+    normalized = validation_text.strip().upper()
+
+    if "NEEDS_CORRECTION" in normalized:
+        return "NEEDS_CORRECTION"
+
+    if "UNSUPPORTED" in normalized:
+        return "UNSUPPORTED"
+
+    if "SUPPORTED" in normalized:
+        return "SUPPORTED"
+
+    # If validator gives unexpected output, be conservative.
+    return "NEEDS_CORRECTION"
+
 
 # ============================================================
 # RAG SYSTEM
@@ -328,14 +587,13 @@ class RAGSystem:
         )
 
     # ========================================================
-    # BUILD PROMPT
+    # BUILD CONTEXT
     # ========================================================
 
-    def build_prompt(
+    def build_context(
         self,
-        question: str,
         retrieval_result: dict[str, Any],
-    ) -> str:
+    ) -> tuple[str, str]:
 
         # -----------------------------------------------------
         # Vector evidence
@@ -368,14 +626,132 @@ class RAGSystem:
             graph_paths
         )
 
-        # -----------------------------------------------------
-        # Final prompt
-        # -----------------------------------------------------
+        return source_text, graph_text
+
+    # ========================================================
+    # BUILD MAIN PROMPT
+    # ========================================================
+
+    def build_prompt(
+        self,
+        question: str,
+        source_text: str,
+        graph_text: str,
+    ) -> str:
 
         return RAG_SYSTEM_PROMPT.format(
             source_text=source_text,
             graph_text=graph_text,
             question=question,
+        )
+
+    # ========================================================
+    # BUILD VALIDATION PROMPT
+    # ========================================================
+
+    def build_validation_prompt(
+        self,
+        question: str,
+        source_text: str,
+        graph_text: str,
+        draft_answer: str,
+    ) -> str:
+
+        return VALIDATION_PROMPT.format(
+            question=question,
+            source_text=source_text,
+            graph_text=graph_text,
+            draft_answer=draft_answer,
+        )
+
+    # ========================================================
+    # BUILD CORRECTION PROMPT
+    # ========================================================
+
+    def build_correction_prompt(
+        self,
+        question: str,
+        source_text: str,
+        graph_text: str,
+        draft_answer: str,
+    ) -> str:
+
+        return CORRECTION_PROMPT.format(
+            question=question,
+            source_text=source_text,
+            graph_text=graph_text,
+            draft_answer=draft_answer,
+        )
+
+    # ========================================================
+    # GENERATE
+    # ========================================================
+
+    def generate_answer(
+        self,
+        prompt: str,
+    ) -> str:
+
+        response = self.llm.invoke(
+            [
+                HumanMessage(
+                    content=prompt
+                )
+            ]
+        )
+
+        return extract_response_text(
+            response
+        )
+
+    # ========================================================
+    # VALIDATE
+    # ========================================================
+
+    def validate_answer(
+        self,
+        question: str,
+        source_text: str,
+        graph_text: str,
+        draft_answer: str,
+    ) -> str:
+
+        validation_prompt = self.build_validation_prompt(
+            question=question,
+            source_text=source_text,
+            graph_text=graph_text,
+            draft_answer=draft_answer,
+        )
+
+        validation_response = self.generate_answer(
+            validation_prompt
+        )
+
+        return normalize_validation_result(
+            validation_response
+        )
+
+    # ========================================================
+    # CORRECT
+    # ========================================================
+
+    def correct_answer(
+        self,
+        question: str,
+        source_text: str,
+        graph_text: str,
+        draft_answer: str,
+    ) -> str:
+
+        correction_prompt = self.build_correction_prompt(
+            question=question,
+            source_text=source_text,
+            graph_text=graph_text,
+            draft_answer=draft_answer,
+        )
+
+        return self.generate_answer(
+            correction_prompt
         )
 
     # ========================================================
@@ -406,30 +782,70 @@ class RAGSystem:
         # Context
         # -----------------------------------------------------
 
+        source_text, graph_text = self.build_context(
+            retrieval_result
+        )
+
+        # -----------------------------------------------------
+        # Main generation
+        # -----------------------------------------------------
+
         prompt = self.build_prompt(
-            question,
-            retrieval_result,
+            question=question,
+            source_text=source_text,
+            graph_text=graph_text,
         )
 
+        draft_answer = self.generate_answer(
+            prompt
+        )
+
+        final_answer = draft_answer
+        validation_status = "NOT_RUN"
+
         # -----------------------------------------------------
-        # Gemini
+        # Suspicious-answer validation
+        #
+        # Only run the second Gemini call when the first answer
+        # looks suspicious.
         # -----------------------------------------------------
 
-        response = self.llm.invoke(
-            [
-                HumanMessage(
-                    content=prompt
+        if is_suspicious_answer(
+            draft_answer
+        ):
+
+            validation_status = self.validate_answer(
+                question=question,
+                source_text=source_text,
+                graph_text=graph_text,
+                draft_answer=draft_answer,
+            )
+
+            # -------------------------------------------------
+            # Correct only when necessary.
+            # -------------------------------------------------
+
+            if validation_status in {
+                "NEEDS_CORRECTION",
+                "UNSUPPORTED",
+            }:
+
+                final_answer = self.correct_answer(
+                    question=question,
+                    source_text=source_text,
+                    graph_text=graph_text,
+                    draft_answer=draft_answer,
                 )
-            ]
-        )
 
-        answer_text = extract_response_text(
-            response
-        )   
+        # -----------------------------------------------------
+        # Return
+        # -----------------------------------------------------
 
         return {
             "question": question,
-            "answer": answer_text,
+            "answer": final_answer,
+            "draft_answer": draft_answer,
+            "validation_status": validation_status,
             "retrieval": retrieval_result,
         }
 
@@ -438,6 +854,7 @@ class RAGSystem:
     # ========================================================
 
     def close(self):
+
         self.retriever.close()
 
 
@@ -549,7 +966,9 @@ def main():
         print("=" * 90)
 
         print()
-        print(f"Question: {question}")
+        print(
+            f"Question: {question}"
+        )
 
         # ----------------------------------------------------
         # Run full RAG
@@ -565,6 +984,36 @@ def main():
 
         print_retrieval(
             result
+        )
+
+        # ----------------------------------------------------
+        # Show draft / validation
+        # ----------------------------------------------------
+
+        print()
+        print("=" * 90)
+        print("DRAFT ANSWER")
+        print("=" * 90)
+
+        print()
+        print(
+            result.get(
+                "draft_answer",
+                "",
+            )
+        )
+
+        print()
+        print("=" * 90)
+        print("VALIDATION STATUS")
+        print("=" * 90)
+
+        print()
+        print(
+            result.get(
+                "validation_status",
+                "NOT_RUN",
+            )
         )
 
         # ----------------------------------------------------

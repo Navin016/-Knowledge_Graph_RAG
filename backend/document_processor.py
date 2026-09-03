@@ -1,54 +1,45 @@
-"""
-backend/document_processor.py
-
-Phase 1-4:
-Document ingestion pipeline.
-
-Pipeline:
-
-    PDF
-     ↓
-    PDF text extraction
-     ↓
-    Smart chunking
-     ↓
-    Gemini 3.5 Flash-Lite extraction
-     ↓
-    Pydantic validation
-     ↓
-    JSON cache
-
-
-Features:
-
-    - Resumable processing
-    - Per-chunk caching
-    - RPM rate limiting
-    - Exponential backoff
-    - 429 handling
-    - Saves after every processed chunk
-    - Reuses successful cached chunks
-    - Retries failed chunks
-    - Detects changes in chunking configuration
-    - Safe interruption / restart
-
-
-Gemini 3.5 Flash-Lite limits configured for this project:
-
-    RPM = 15
-    TPM = 250,000
-    RPD = 500
-
-The processor does not attempt to consume the entire quota.
-
-Requests are spaced according to the RPM limit.
-"""
+# =========================================================
+# backend/document_processor.py
+#
+# Phase 1-4:
+# Document ingestion pipeline.
+#
+# Pipeline:
+#
+#     PDF
+#      ↓
+#     PDF text extraction
+#      ↓
+#     Smart chunking
+#      ↓
+#     Gemini 3.5 Flash-Lite extraction
+#      ↓
+#     Pydantic validation
+#      ↓
+#     JSON cache
+#
+# Features:
+#
+#     - Resumable processing
+#     - Per-chunk caching
+#     - Content-hash based document caching
+#     - RPM rate limiting
+#     - Exponential backoff
+#     - 429 handling
+#     - Saves after every processed chunk
+#     - Reuses successful cached chunks
+#     - Retries failed chunks
+#     - Detects changes in chunking configuration
+#     - Safe interruption / restart
+#
+# =========================================================
 
 
 # =========================================================
 # Imports
 # =========================================================
 
+import hashlib
 import json
 import os
 import time
@@ -111,7 +102,7 @@ GEMINI_MODEL = os.getenv(
 # =========================================================
 # Gemini quota configuration
 # =========================================================
-#
+
 # Current model limits:
 #
 #     RPM = 15
@@ -154,6 +145,7 @@ GEMINI_RPD = int(
 # =========================================================
 
 if GEMINI_RPM <= 0:
+
     raise ValueError(
         "GEMINI_RPM must be greater than 0."
     )
@@ -196,11 +188,11 @@ INITIAL_RETRY_DELAY = 4
 # Cache version
 # =========================================================
 #
-# Increment whenever the cache structure or chunking
-# behavior changes significantly.
+# Incremented because cache identity has changed from
+# filename-based to content-hash-based.
 # =========================================================
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 
 # =========================================================
@@ -425,25 +417,83 @@ def extract_triples_with_retry(
 
 
 # =========================================================
-# Cache helpers
+# FILE CONTENT HASH
+# =========================================================
+
+def calculate_file_hash(
+    pdf_path: Path,
+) -> str:
+    """
+    Calculate a SHA-256 hash of the complete PDF file.
+
+    The hash represents the actual PDF contents rather than
+    the uploaded filename.
+
+    Therefore:
+
+        demo.pdf
+        UUID_demo.pdf
+        another_uuid_demo.pdf
+
+    will all produce the same hash when their contents are
+    identical.
+
+    Returns:
+        Lowercase hexadecimal SHA-256 digest.
+    """
+
+    sha256 = hashlib.sha256()
+
+
+    with open(
+        pdf_path,
+        "rb",
+    ) as file:
+
+        while True:
+
+            block = file.read(
+                1024 * 1024
+            )
+
+            if not block:
+
+                break
+
+            sha256.update(
+                block
+            )
+
+
+    return sha256.hexdigest()
+
+
+# =========================================================
+# CACHE PATH
 # =========================================================
 
 def get_output_path(
-    pdf_path: Path,
+    file_hash: str,
 ) -> Path:
     """
-    Return the JSON cache path for a PDF.
+    Return the JSON cache path based on the PDF content hash.
 
     Example:
 
-        sample.pdf
+        PDF content
             ↓
-        sample.json
+        SHA-256:
+        a3f8....9b21
+            ↓
+        data/processed/a3f8....9b21.json
+
+    This means the same PDF gets the same cache file even if
+    FastAPI assigns a different uploaded filename.
     """
 
     return (
         PROCESSED_DIR
-        / f"{pdf_path.stem}.json"
+        / f"{file_hash}.json"
     )
 
 
@@ -570,21 +620,31 @@ def save_cache(
 
 def cache_matches_document(
     cache: dict,
-    pdf_path: Path,
+    file_hash: str,
     total_chunks: int,
 ) -> bool:
     """
-    Check whether an existing cache belongs to
-    the same document and chunking configuration.
+    Check whether an existing cache belongs to the same
+    document and chunking configuration.
 
     Cache is reusable only when:
 
         - cache version matches
-        - source PDF matches
+        - PDF content hash matches
         - chunk size matches
         - overlap matches
         - total chunk count matches
+
+    The uploaded filename is intentionally NOT checked.
+
+    This is important for FastAPI uploads because each upload
+    may have a different UUID-prefixed filename even when the
+    underlying PDF content is identical.
     """
+
+    # -----------------------------------------------------
+    # Cache version
+    # -----------------------------------------------------
 
     if cache.get(
         "cache_version"
@@ -593,12 +653,20 @@ def cache_matches_document(
         return False
 
 
+    # -----------------------------------------------------
+    # PDF content hash
+    # -----------------------------------------------------
+
     if cache.get(
-        "source_file"
-    ) != pdf_path.name:
+        "file_hash"
+    ) != file_hash:
 
         return False
 
+
+    # -----------------------------------------------------
+    # Chunk size
+    # -----------------------------------------------------
 
     if cache.get(
         "chunk_size"
@@ -607,12 +675,20 @@ def cache_matches_document(
         return False
 
 
+    # -----------------------------------------------------
+    # Chunk overlap
+    # -----------------------------------------------------
+
     if cache.get(
         "overlap"
     ) != DEFAULT_OVERLAP:
 
         return False
 
+
+    # -----------------------------------------------------
+    # Total chunk count
+    # -----------------------------------------------------
 
     if cache.get(
         "total_chunks"
@@ -630,18 +706,28 @@ def cache_matches_document(
 
 def create_cache(
     pdf_path: Path,
+    file_hash: str,
     text: str,
     chunks: list[str],
 ) -> dict:
     """
     Create a new cache structure.
+
+    The current uploaded filename is kept as metadata, but
+    document identity is determined by file_hash.
     """
 
     return {
 
         "cache_version": CACHE_VERSION,
 
+        # Current upload name.
+        # This is metadata only and is NOT used to determine
+        # whether the cache belongs to the same document.
         "source_file": pdf_path.name,
+
+        # SHA-256 content identity.
+        "file_hash": file_hash,
 
         "total_characters": len(
             text
@@ -721,7 +807,7 @@ def process_document(
     pdf_path: str | Path,
 ) -> Path:
     """
-    Process a PDF using a resumable cache.
+    Process a PDF using a resumable content-hash cache.
 
     Existing successful chunks are reused.
 
@@ -735,6 +821,8 @@ def process_document(
             "status": ...,
             "triples": [...]
         }
+
+    The returned Path points to the processed JSON cache.
     """
 
     pdf_path = Path(
@@ -770,9 +858,11 @@ def process_document(
         + "=" * 80
     )
 
+
     print(
         "DOCUMENT PROCESSING"
     )
+
 
     print(
         "=" * 80
@@ -818,6 +908,26 @@ def process_document(
     print(
         f"Chunk overlap: "
         f"{DEFAULT_OVERLAP}"
+    )
+
+
+    # =====================================================
+    # File hash
+    # =====================================================
+
+    print(
+        "\nCalculating PDF content hash..."
+    )
+
+
+    file_hash = calculate_file_hash(
+        pdf_path
+    )
+
+
+    print(
+        f"File hash: "
+        f"{file_hash}"
     )
 
 
@@ -882,9 +992,30 @@ def process_document(
     # =====================================================
     # Cache path
     # =====================================================
+    #
+    # IMPORTANT:
+    #
+    # Cache path is based on file content hash, NOT filename.
+    #
+    # Therefore:
+    #
+    #     abc_demo.pdf
+    #     xyz_demo.pdf
+    #
+    # with identical contents use:
+    #
+    #     <same_hash>.json
+    #
+    # =====================================================
 
     output_path = get_output_path(
-        pdf_path
+        file_hash
+    )
+
+
+    print(
+        f"\nCache path:"
+        f"\n{output_path}"
     )
 
 
@@ -901,19 +1032,27 @@ def process_document(
 
         if cache_matches_document(
             existing_cache,
-            pdf_path,
+            file_hash,
             len(chunks),
         ):
 
             print(
                 "\nExisting compatible "
-                "cache found."
+                "content-hash cache found."
             )
+
+
+            print(
+                f"Cache source filename: "
+                f"{existing_cache.get('source_file', 'unknown')}"
+            )
+
 
             print(
                 "Successful chunks will "
                 "be reused."
             )
+
 
             cache = existing_cache
 
@@ -927,12 +1066,15 @@ def process_document(
                 "configuration."
             )
 
+
             print(
                 "Creating a fresh cache."
             )
 
+
             cache = create_cache(
                 pdf_path,
+                file_hash,
                 text,
                 chunks,
             )
@@ -941,15 +1083,18 @@ def process_document(
     else:
 
         print(
-            "\nNo existing cache found."
+            "\nNo existing content-hash cache found."
         )
+
 
         print(
             "Creating a new cache."
         )
 
+
         cache = create_cache(
             pdf_path,
+            file_hash,
             text,
             chunks,
         )
@@ -1090,6 +1235,7 @@ def process_document(
                     "    Previous attempt "
                     "failed."
                 )
+
 
                 print(
                     "    → Retrying chunk..."
@@ -1239,6 +1385,16 @@ def process_document(
     )
 
 
+    # Keep metadata current in case this cache was reused.
+    cache["cache_version"] = CACHE_VERSION
+    cache["file_hash"] = file_hash
+    cache["source_file"] = pdf_path.name
+    cache["total_characters"] = len(text)
+    cache["chunk_size"] = DEFAULT_CHUNK_SIZE
+    cache["overlap"] = DEFAULT_OVERLAP
+    cache["total_chunks"] = len(chunks)
+
+
     update_cache_statistics(
         cache
     )
@@ -1291,6 +1447,16 @@ def process_document(
     print(
         f"Total triples:      "
         f"{cache['total_triples']}"
+    )
+
+
+    print(
+        f"\nFile hash:"
+    )
+
+
+    print(
+        file_hash
     )
 
 
