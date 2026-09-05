@@ -61,7 +61,7 @@ GRAPH_TOP_K = 5
 
 # Maximum amount of text included from each vector result
 # in the Gemini context.
-VECTOR_CONTEXT_LIMIT = 1800
+VECTOR_CONTEXT_LIMIT = 2500
 
 
 # Maximum amount of graph-path text included in the prompt.
@@ -598,18 +598,31 @@ class RAGService:
         # ----------------------------------------------------
 
         vector_results = retrieval.get(
-            "vector_results",
-            [],
+            "expanded_vector_results",
+            retrieval.get(
+                "vector_results",
+                [],
+            ),
         )
 
-
         vector_context_parts: list[str] = []
-
 
         for index, item in enumerate(
             vector_results,
             start=1,
         ):
+            is_neighbor = item.get(
+                "is_neighbor",
+                False,
+            )
+
+            # Original semantic hits get the full chunk.
+            # Neighbor chunks get less context to control prompt size.
+            text_limit = (
+                VECTOR_CONTEXT_LIMIT
+                if not is_neighbor
+                else 1200
+            )
 
             vector_context_parts.append(
                 (
@@ -617,6 +630,7 @@ class RAGService:
                     "chunk_id: {chunk_id}\n"
                     "source_file: {source_file}\n"
                     "score: {score:.4f}\n"
+                    "is_neighbor: {is_neighbor}\n"
                     "text:\n{text}"
                 ).format(
                     index=index,
@@ -634,16 +648,16 @@ class RAGService:
                             0.0,
                         )
                     ),
+                    is_neighbor=is_neighbor,
                     text=_trim_text(
                         item.get(
                             "text",
                             "",
                         ),
-                        VECTOR_CONTEXT_LIMIT,
+                        text_limit,
                     ),
                 )
             )
-
 
         # ----------------------------------------------------
         # Graph results
