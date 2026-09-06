@@ -34,7 +34,10 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from backend.pipeline import run_pipeline
+from backend.pipeline import (
+    PIPELINE_PHASES,
+    run_pipeline,
+)
 from backend.rag_service import RAGService
 
 from backend.document_processor import (
@@ -567,6 +570,61 @@ def _mark_active_document(
     )
 
 
+def _initial_phases() -> dict[str, dict[str, str]]:
+    return {
+        phase_id: {
+            "label": label,
+            "status": "pending",
+        }
+        for phase_id, label in PIPELINE_PHASES
+    }
+
+
+def _update_pipeline_phase(
+    job_id: str,
+    phase_id: str,
+    status: str,
+    progress: int,
+    message: str,
+) -> None:
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job is None:
+            return
+
+        phases = job.setdefault("phases", _initial_phases())
+        phase = phases.get(phase_id)
+        if phase is None:
+            return
+
+        phase["status"] = status
+        job["progress"] = progress
+        job["message"] = message
+
+
+def _pipeline_progress_callback(
+    job_id: str,
+    phase_id: str,
+    status: str,
+    progress: int,
+    message: str,
+) -> None:
+    _update_pipeline_phase(
+        job_id,
+        phase_id,
+        status,
+        progress,
+        message,
+    )
+
+
+def _mark_all_phases_completed() -> dict[str, dict[str, str]]:
+    phases = _initial_phases()
+    for phase in phases.values():
+        phase["status"] = "completed"
+    return phases
+
+
 # ============================================================
 # NORMAL PIPELINE JOB
 # ============================================================
@@ -594,6 +652,13 @@ def _ingest_job(
         result = run_pipeline(
             pdf_path=file_path,
             clear_existing=True,
+            progress_callback=lambda phase_id, status, progress, message: _pipeline_progress_callback(
+                job_id,
+                phase_id,
+                status,
+                progress,
+                message,
+            ),
         )
 
 
@@ -639,6 +704,14 @@ def _ingest_job(
 
 
     except Exception as exc:
+
+        with jobs_lock:
+            job = jobs.get(job_id)
+            if job is not None:
+                for phase in job.get("phases", {}).values():
+                    if phase.get("status") == "running":
+                        phase["status"] = "failed"
+                        break
 
         _update_job(
             job_id,
@@ -848,7 +921,18 @@ async def upload_pdf(
 
             "file_hash": file_hash,
 
+            "phases": _initial_phases(),
+
         }
+
+
+    _update_pipeline_phase(
+        job_id,
+        "upload",
+        "completed",
+        5,
+        "PDF uploaded. Checking document cache...",
+    )
 
 
     # ========================================================
@@ -910,6 +994,7 @@ async def upload_pdf(
             ),
             cache_hit=True,
             reused_active_document=True,
+            phases=_mark_all_phases_completed(),
             result={
                 "filename": filename,
                 "file_hash": file_hash,
@@ -921,16 +1006,8 @@ async def upload_pdf(
             },
         )
 
-
-        return {
-
-            "job_id": job_id,
-
-            "filename": filename,
-
-            "status": "completed",
-
-        }
+        with jobs_lock:
+            return jobs[job_id].copy()
 
 
     # --------------------------------------------------------
@@ -998,9 +1075,8 @@ async def upload_pdf(
             cache_hit=False,
         )
 
-
     # --------------------------------------------------------
-    # Run existing pipeline asynchronously
+    # Run pipeline asynchronously
     # --------------------------------------------------------
 
     background_tasks.add_task(
@@ -1011,15 +1087,10 @@ async def upload_pdf(
         file_hash,
     )
 
-
     return {
-
         "job_id": job_id,
-
         "filename": filename,
-
         "status": "queued",
-
     }
 
 

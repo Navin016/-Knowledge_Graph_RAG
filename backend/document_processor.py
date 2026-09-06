@@ -44,6 +44,7 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Callable
 
 
 from dotenv import load_dotenv
@@ -800,11 +801,51 @@ def update_cache_statistics(
 
 
 # =========================================================
+# Progress callback
+# =========================================================
+
+ProgressCallback = Callable[
+    [str, str, int, str],
+    None,
+]
+
+
+def _report_progress(
+    progress_callback: ProgressCallback | None,
+    status: str,
+    progress: int,
+    message: str,
+) -> None:
+    """
+    Report document-processing progress to the API/frontend.
+
+    Progress callbacks are optional. If no callback is supplied,
+    document processing behaves exactly as before.
+    """
+    if progress_callback is None:
+        return
+
+    progress = max(0, min(100, int(progress)))
+
+    try:
+        progress_callback(
+            "processing",
+            status,
+            progress,
+            message,
+        )
+    except Exception as exc:
+        # Progress reporting must never break ingestion.
+        print(f"Warning: progress callback failed: {exc}")
+
+
+# =========================================================
 # Process one PDF
 # =========================================================
 
 def process_document(
     pdf_path: str | Path,
+    progress_callback: ProgressCallback | None = None,
 ) -> Path:
     """
     Process a PDF using a resumable content-hash cache.
@@ -823,6 +864,14 @@ def process_document(
         }
 
     The returned Path points to the processed JSON cache.
+
+    Args:
+        pdf_path:
+            Path to the source PDF.
+        progress_callback:
+            Optional callback receiving
+            (phase_id, status, progress_percent, message).
+            This function reports phase_id="processing".
     """
 
     pdf_path = Path(
@@ -847,6 +896,13 @@ def process_document(
             f"Expected a PDF file, "
             f"got: {pdf_path.name}"
         )
+
+    _report_progress(
+        progress_callback,
+        "running",
+        0,
+        "PDF accepted. Extracting text...",
+    )
 
 
     # =====================================================
@@ -951,6 +1007,13 @@ def process_document(
         f"{len(text)} characters."
     )
 
+    _report_progress(
+        progress_callback,
+        "running",
+        20,
+        f"PDF text extracted ({len(text):,} characters).",
+    )
+
 
     if not text.strip():
 
@@ -978,6 +1041,13 @@ def process_document(
     print(
         f"Created "
         f"{len(chunks)} chunks."
+    )
+
+    _report_progress(
+        progress_callback,
+        "running",
+        30,
+        f"Created {len(chunks)} chunks. Preparing Gemini extraction...",
     )
 
 
@@ -1368,6 +1438,23 @@ def process_document(
             "    ✓ Progress saved"
         )
 
+        processed_count = len(processed_chunks)
+        total_count = len(chunks)
+
+        chunk_progress = (
+            30
+            + int(60 * processed_count / total_count)
+            if total_count
+            else 30
+        )
+
+        _report_progress(
+            progress_callback,
+            "running",
+            chunk_progress,
+            f"Processed {processed_count}/{total_count} chunks.",
+        )
+
 
     # =====================================================
     # Step 4
@@ -1377,6 +1464,14 @@ def process_document(
     print(
         "\n[4/4] Finalizing "
         "processed document..."
+    )
+
+
+    _report_progress(
+        progress_callback,
+        "running",
+        95,
+        "Finalizing processed document cache...",
     )
 
 
@@ -1467,6 +1562,14 @@ def process_document(
 
     print(
         output_path
+    )
+
+
+    _report_progress(
+        progress_callback,
+        "completed",
+        100,
+        "PDF processing and Gemini extraction completed.",
     )
 
 

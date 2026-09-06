@@ -5,17 +5,17 @@ from backend.graph_retriever import GraphRetriever
 
 
 # ============================================================
-# Retrieval configuration
+# RETRIEVAL CONFIGURATION
 # ============================================================
 
 VECTOR_K = 5
-ENTITY_K = 10
+ENTITY_K = 12
 GRAPH_K = 5
 
-# Expand only the strongest vector results.
+# Expand only the strongest original vector hits.
 NEIGHBOR_EXPAND_TOP_K = 3
 
-# Include one chunk before and one chunk after.
+# Include one chunk before and after each selected chunk.
 NEIGHBOR_RADIUS = 1
 
 
@@ -26,7 +26,7 @@ class UnifiedRetriever:
         vector_k: int = VECTOR_K,
         entity_k: int = ENTITY_K,
         graph_k: int = GRAPH_K,
-    ):
+    ) -> None:
 
         self.vector_retriever = VectorRetriever(
             top_k=vector_k
@@ -54,7 +54,7 @@ class UnifiedRetriever:
             )
 
         # -----------------------------------------------------
-        # Vector retrieval
+        # 1. Vector retrieval
         # -----------------------------------------------------
 
         vector_results = (
@@ -64,7 +64,7 @@ class UnifiedRetriever:
         )
 
         # -----------------------------------------------------
-        # Neighbor expansion
+        # 2. Neighbor expansion
         # -----------------------------------------------------
 
         expanded_vector_results = (
@@ -76,7 +76,7 @@ class UnifiedRetriever:
         )
 
         # -----------------------------------------------------
-        # Graph retrieval
+        # 3. Graph retrieval
         # -----------------------------------------------------
 
         graph_results = (
@@ -85,31 +85,47 @@ class UnifiedRetriever:
             )
         )
 
+        graph_entities = graph_results.get(
+            "entities",
+            [],
+        )
+
+        graph_paths = graph_results.get(
+            "graph_paths",
+            [],
+        )
+
         # -----------------------------------------------------
-        # Unified result
+        # 4. Unified result
         # -----------------------------------------------------
 
         return {
             "query": query,
 
-            # Keep original results available.
+            # Original semantic chunk hits.
             "vector_results": vector_results,
 
-            # Expanded results used for RAG context.
+            # Neighbor-expanded chunk context.
             "expanded_vector_results":
                 expanded_vector_results,
 
+            # Graph retrieval.
             "graph_results": graph_results,
 
+            # Convenience accessors.
+            "graph_entities": graph_entities,
+            "graph_paths": graph_paths,
+
+            # This is the context passed to the final LLM.
             "context": {
                 "source_text":
                     expanded_vector_results,
 
+                "graph_entities":
+                    graph_entities,
+
                 "graph_paths":
-                    graph_results.get(
-                        "graph_paths",
-                        [],
-                    ),
+                    graph_paths,
             },
         }
 
@@ -117,33 +133,29 @@ class UnifiedRetriever:
     # CLOSE
     # ========================================================
 
-    def close(self):
+    def close(self) -> None:
 
         self.vector_retriever.close()
-
         self.graph_retriever.close()
 
 
 # ============================================================
-# PRINT RESULTS
+# DEBUG OUTPUT
 # ============================================================
 
 def print_results(
-    result: dict[str, Any]
-):
+    result: dict[str, Any],
+) -> None:
 
     print()
-    print("=" * 90)
+    print("=" * 100)
     print("UNIFIED RETRIEVAL")
-    print("=" * 90)
+    print("=" * 100)
 
     print()
     print("QUESTION")
-    print("-" * 90)
-
-    print(
-        result["query"]
-    )
+    print("-" * 100)
+    print(result["query"])
 
     # ========================================================
     # ORIGINAL VECTOR RESULTS
@@ -151,11 +163,15 @@ def print_results(
 
     print()
     print("ORIGINAL VECTOR RESULTS")
-    print("-" * 90)
+    print("-" * 100)
 
-    vector_results = (
-        result["vector_results"]
+    vector_results = result.get(
+        "vector_results",
+        [],
     )
+
+    if not vector_results:
+        print("No vector results found.")
 
     for i, item in enumerate(
         vector_results,
@@ -169,20 +185,24 @@ def print_results(
         )
 
         print(
-            item["text"][:700]
+            item.get("text", "")[:1000]
         )
 
     # ========================================================
-    # EXPANDED VECTOR RESULTS
+    # EXPANDED VECTOR CONTEXT
     # ========================================================
 
     print()
     print("EXPANDED VECTOR CONTEXT")
-    print("-" * 90)
+    print("-" * 100)
 
-    expanded_results = (
-        result["expanded_vector_results"]
+    expanded_results = result.get(
+        "expanded_vector_results",
+        [],
     )
+
+    if not expanded_results:
+        print("No expanded vector results found.")
 
     for i, item in enumerate(
         expanded_results,
@@ -206,23 +226,54 @@ def print_results(
         )
 
         print(
-            item["text"][:700]
+            item.get("text", "")[:1000]
         )
 
     # ========================================================
-    # GRAPH RESULTS
+    # GRAPH ENTITIES
+    # ========================================================
+
+    print()
+    print("GRAPH ENTITY CANDIDATES")
+    print("-" * 100)
+
+    graph_entities = result.get(
+        "graph_entities",
+        [],
+    )
+
+    if not graph_entities:
+        print("No graph entities found.")
+
+    for i, entity in enumerate(
+        graph_entities,
+        start=1,
+    ):
+
+        print(
+            f"{i}. {entity['name']} "
+            f"(score={entity.get('score', 0.0):.4f}, "
+            f"semantic={entity.get('semantic_score', 0.0):.4f}, "
+            f"lexical={entity.get('lexical_score', 0.0):.4f}, "
+            f"matched={entity.get('matched_token_count', 0)}, "
+            f"exact={entity.get('exact_phrase_match', False)})"
+        )
+
+    # ========================================================
+    # GRAPH EVIDENCE
     # ========================================================
 
     print()
     print("GRAPH EVIDENCE")
-    print("-" * 90)
+    print("-" * 100)
 
-    graph_paths = (
-        result["graph_results"].get(
-            "graph_paths",
-            [],
-        )
+    graph_paths = result.get(
+        "graph_paths",
+        [],
     )
+
+    if not graph_paths:
+        print("No graph evidence found.")
 
     for i, path in enumerate(
         graph_paths,
@@ -231,17 +282,13 @@ def print_results(
 
         print(
             f"\n{i}. "
-            f"Score={path['score']:.4f}"
+            f"Final={path.get('score', 0.0):.4f} "
+            f"Selection={path.get('selection_score', 0.0):.4f} "
+            f"Semantic={path.get('semantic_score', 0.0):.4f}"
         )
 
         print(
-            path["text"]
-        )
-
-    if not graph_paths:
-
-        print(
-            "No graph evidence found."
+            path.get("text", "")
         )
 
 
@@ -249,11 +296,11 @@ def print_results(
 # MAIN
 # ============================================================
 
-def main():
+def main() -> None:
 
     retriever = UnifiedRetriever(
         vector_k=5,
-        entity_k=10,
+        entity_k=12,
         graph_k=5,
     )
 

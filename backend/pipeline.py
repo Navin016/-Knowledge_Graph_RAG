@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
+from typing import Any, Callable
 
 from backend.document_processor import process_document
 from backend.relation_normalizer import (
@@ -47,6 +48,49 @@ from backend.entity_resolution import (
 from backend.neo4j_client import Neo4jClient
 from backend.neo4j_ingestion import ingest as ingest_neo4j
 from backend.embedding_model import get_rag_embedding_model
+
+
+# ============================================================
+# Pipeline phase reporting
+# ============================================================
+
+PIPELINE_PHASES = [
+    ("upload", "PDF uploaded"),
+    ("processing", "PDF processing + Gemini extraction"),
+    ("normalization", "Relation normalization"),
+    ("resolution", "Entity resolution"),
+    ("neo4j_setup", "Neo4j setup"),
+    ("neo4j_ingestion", "Neo4j graph + chunk ingestion"),
+    ("embeddings", "Entity/vector embeddings"),
+    ("verification", "Final verification"),
+    ("ready", "Ready for questions"),
+]
+
+
+ProgressCallback = Callable[
+    [str, str, int, str],
+    None,
+]
+
+
+def _report_phase(
+    callback: ProgressCallback | None,
+    phase_id: str,
+    status: str,
+    progress: int,
+    message: str,
+) -> None:
+    """Report one pipeline phase without making the pipeline depend on FastAPI."""
+    if callback is None:
+        return
+
+    callback(
+        phase_id,
+        status,
+        progress,
+        message,
+    )
+
 
 
 # ============================================================
@@ -224,6 +268,7 @@ def verify_pipeline() -> None:
 def run_pipeline(
     pdf_path: str | Path,
     clear_existing: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, str]:
     """Run the complete PDF -> Neo4j ingestion pipeline."""
     start_time = time.perf_counter()
@@ -235,6 +280,14 @@ def run_pipeline(
 
     if pdf_path.suffix.lower() != ".pdf":
         raise ValueError(f"Expected a PDF file, got: {pdf_path.name}")
+
+    _report_phase(
+        progress_callback,
+        "upload",
+        "completed",
+        8,
+        "PDF upload completed. Starting ingestion pipeline.",
+    )
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -250,13 +303,39 @@ def run_pipeline(
     # --------------------------------------------------------
     print()
     print("[1/7] PROCESSING PDF")
-    processed_path = Path(process_document(pdf_path)).resolve()
+    _report_phase(
+        progress_callback,
+        "processing",
+        "running",
+        12,
+        "Extracting PDF text, chunking the document, and extracting triples with Gemini...",
+    )
+
+    processed_path = Path(
+        process_document(pdf_path)
+    ).resolve()
+
+    _report_phase(
+        progress_callback,
+        "processing",
+        "completed",
+        28,
+        "PDF processing and Gemini extraction completed.",
+    )
 
     # --------------------------------------------------------
     # 2. Relation normalization
     # --------------------------------------------------------
     print()
     print("[2/7] NORMALIZING RELATIONS")
+
+    _report_phase(
+        progress_callback,
+        "normalization",
+        "running",
+        32,
+        "Normalizing extracted relationship types...",
+    )
 
     normalized_path = (
         processed_path.parent
@@ -280,11 +359,27 @@ def run_pipeline(
     print(f"Normalized triples: {len(normalized_triples)}")
     print(f"Saved to: {normalized_path}")
 
+    _report_phase(
+        progress_callback,
+        "normalization",
+        "completed",
+        40,
+        f"Relation normalization completed: {len(normalized_triples)} triples.",
+    )
+
     # --------------------------------------------------------
     # 3. Entity resolution
     # --------------------------------------------------------
     print()
     print("[3/7] RESOLVING ENTITIES")
+
+    _report_phase(
+        progress_callback,
+        "resolution",
+        "running",
+        43,
+        "Resolving entity mentions into canonical entities...",
+    )
 
     resolved_path = (
         normalized_path.parent
@@ -320,12 +415,37 @@ def run_pipeline(
     print(f"Canonical entities:      {len(clusters)}")
     print(f"Saved to: {resolved_path}")
 
+    _report_phase(
+        progress_callback,
+        "resolution",
+        "completed",
+        56,
+        f"Entity resolution completed: {len(clusters)} canonical entities.",
+    )
+
     # --------------------------------------------------------
     # 4. Neo4j setup
     # --------------------------------------------------------
     print()
     print("[4/7] PREPARING NEO4J")
+
+    _report_phase(
+        progress_callback,
+        "neo4j_setup",
+        "running",
+        60,
+        "Preparing Neo4j constraints and vector indexes...",
+    )
+
     setup_neo4j()
+
+    _report_phase(
+        progress_callback,
+        "neo4j_setup",
+        "completed",
+        65,
+        "Neo4j constraints and vector indexes are ready.",
+    )
 
     # --------------------------------------------------------
     # 5. Graph + chunk/vector ingestion
@@ -333,10 +453,26 @@ def run_pipeline(
     print()
     print("[5/7] INGESTING GRAPH + CHUNKS")
 
+    _report_phase(
+        progress_callback,
+        "neo4j_ingestion",
+        "running",
+        68,
+        "Writing entities, relationships, chunks, and chunk embeddings to Neo4j...",
+    )
+
     ingest_neo4j(
         resolved_path=str(resolved_path),
         normalized_path=str(normalized_path),
         clear_existing=clear_existing,
+    )
+
+    _report_phase(
+        progress_callback,
+        "neo4j_ingestion",
+        "completed",
+        80,
+        "Neo4j graph and chunk ingestion completed.",
     )
 
     # --------------------------------------------------------
@@ -344,14 +480,56 @@ def run_pipeline(
     # --------------------------------------------------------
     print()
     print("[6/7] INDEXING ENTITY EMBEDDINGS")
+
+    _report_phase(
+        progress_callback,
+        "embeddings",
+        "running",
+        83,
+        "Generating and writing entity vector embeddings...",
+    )
+
     build_entity_vector_index()
+
+    _report_phase(
+        progress_callback,
+        "embeddings",
+        "completed",
+        92,
+        "Entity/vector embeddings completed.",
+    )
 
     # --------------------------------------------------------
     # 7. Final verification
     # --------------------------------------------------------
     print()
     print("[7/7] VERIFYING")
+
+    _report_phase(
+        progress_callback,
+        "verification",
+        "running",
+        94,
+        "Verifying Neo4j nodes, relationships, and embeddings...",
+    )
+
     verify_pipeline()
+
+    _report_phase(
+        progress_callback,
+        "verification",
+        "completed",
+        98,
+        "Final Neo4j verification completed.",
+    )
+
+    _report_phase(
+        progress_callback,
+        "ready",
+        "completed",
+        100,
+        "Ingestion completed. The PDF is ready for questions.",
+    )
 
     elapsed = time.perf_counter() - start_time
 
