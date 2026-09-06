@@ -69,51 +69,153 @@ function GraphView({ graph, onNodeClick }) {
   useEffect(() => {
     const svgNode = svgRef.current;
     if (!svgNode) return undefined;
+
     const svg = d3.select(svgNode);
     svg.selectAll("*").remove();
 
     const nodes = (graph?.nodes || []).map((n) => ({ ...n }));
     const links = (graph?.links || []).map((l) => ({ ...l }));
+
     if (!nodes.length) return undefined;
 
     const width = svgNode.clientWidth || 800;
     const height = svgNode.clientHeight || 560;
+
+    const PADDING = 55;
+    const NODE_RADIUS = 20;
+    const LABEL_MARGIN = 22;
+
     svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+    // Arrow marker for directed relationships.
+    const defs = svg.append("defs");
+    defs.append("marker")
+      .attr("id", "kg-arrow")
+      .attr("viewBox", "0 -5 10 10")
+      .attr("refX", 29)
+      .attr("refY", 0)
+      .attr("markerWidth", 6)
+      .attr("markerHeight", 6)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M0,-5L10,0L0,5Z")
+      .attr("fill", "#7db7e8");
 
     const g = svg.append("g");
     const linkLayer = g.append("g");
     const nodeLayer = g.append("g");
 
-    const link = linkLayer.selectAll("g").data(links).join("g");
-    link.append("line");
-    link.append("text").text((d) => d.relation || "");
+    function isDirected(link) {
+      return Boolean(
+        link?.directed ??
+        link?.is_directed ??
+        link?.direction ??
+        link?.source_to_target
+      );
+    }
+
+    const link = linkLayer.selectAll("g")
+      .data(links)
+      .join("g");
+
+    link.append("line")
+      .attr("stroke", "#a9cfee")
+      .attr("stroke-width", 1.7)
+      .attr("stroke-opacity", 0.9)
+      .attr("marker-end", (d) => isDirected(d) ? "url(#kg-arrow)" : null);
+
+    link.append("text")
+      .text((d) => d.relation || "")
+      .attr("fill", "#6b9ac4")
+      .attr("font-size", 11)
+      .attr("font-weight", 500)
+      .attr("text-anchor", "middle")
+      .attr("dy", -5)
+      .style("pointer-events", "none");
 
     const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id((d) => d.id).distance(125))
-      .force("charge", d3.forceManyBody().strength(-440))
+      .force(
+        "link",
+        d3.forceLink(links)
+          .id((d) => d.id)
+          .distance(125)
+          .strength(0.7)
+      )
+      .force("charge", d3.forceManyBody().strength(-420))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(42))
+      .force(
+        "collision",
+        d3.forceCollide().radius(NODE_RADIUS + 28)
+      )
       .on("tick", () => {
+        // Keep every node strictly inside the graph panel.
+        nodes.forEach((d) => {
+          d.x = Math.max(PADDING, Math.min(width - PADDING, d.x ?? width / 2));
+          d.y = Math.max(PADDING, Math.min(height - PADDING, d.y ?? height / 2));
+        });
+
         link.select("line")
-          .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
-          .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
+          .attr("x1", (d) => d.source.x)
+          .attr("y1", (d) => d.source.y)
+          .attr("x2", (d) => d.target.x)
+          .attr("y2", (d) => d.target.y);
+
         link.select("text")
           .attr("x", (d) => (d.source.x + d.target.x) / 2)
           .attr("y", (d) => (d.source.y + d.target.y) / 2);
+
         node.attr("transform", (d) => `translate(${d.x},${d.y})`);
       });
 
-    const node = nodeLayer.selectAll("g").data(nodes).join("g")
+    const node = nodeLayer.selectAll("g")
+      .data(nodes)
+      .join("g")
       .on("click", (_, d) => onNodeClick?.(d))
-      .call(d3.drag()
-        .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(.2).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
-        .on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+      .call(
+        d3.drag()
+          .on("start", (e, d) => {
+            if (!e.active) simulation.alphaTarget(0.2).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (e, d) => {
+            d.fx = Math.max(
+              PADDING,
+              Math.min(width - PADDING, e.x)
+            );
+            d.fy = Math.max(
+              PADDING,
+              Math.min(height - PADDING, e.y)
+            );
+          })
+          .on("end", (e, d) => {
+            if (!e.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          })
+      );
 
-    node.append("circle").attr("r", 20);
-    node.append("text").attr("dy", 34).text((d) => d.label || d.id);
+    node.append("circle")
+      .attr("r", NODE_RADIUS)
+      .attr("fill", "#dceeff")
+      .attr("stroke", "#4f91c9")
+      .attr("stroke-width", 2);
 
-    const zoom = d3.zoom().scaleExtent([.5, 2.5]).on("zoom", (e) => g.attr("transform", e.transform));
+    node.append("text")
+      .attr("dy", NODE_RADIUS + LABEL_MARGIN)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#3577aa")
+      .attr("font-size", 12)
+      .attr("font-weight", 600)
+      .style("pointer-events", "none")
+      .text((d) => d.label || d.id);
+
+    // Disable zoom/pan so users cannot move the graph outside its panel.
+    const zoom = d3.zoom()
+      .scaleExtent([1, 1])
+      .translateExtent([[0, 0], [width, height]])
+      .extent([[0, 0], [width, height]]);
+
     svg.call(zoom);
 
     return () => {
@@ -123,9 +225,22 @@ function GraphView({ graph, onNodeClick }) {
   }, [graph, onNodeClick]);
 
   if (!graph?.nodes?.length) {
-    return <div className="graph-empty"><div><div className="graph-symbol">◇</div><strong>No graph yet</strong><p>Ask a question to explore retrieved entities and relationships.</p></div></div>;
+    return (
+      <div className="graph-empty">
+        <div>
+          <div className="graph-symbol">◇</div>
+          <strong>No graph yet</strong>
+          <p>Ask a question to explore retrieved entities and relationships.</p>
+        </div>
+      </div>
+    );
   }
-  return <div className="graph-wrap"><svg ref={svgRef} className="graph-svg" /></div>;
+
+  return (
+    <div className="graph-wrap">
+      <svg ref={svgRef} className="graph-svg" />
+    </div>
+  );
 }
 
 function SourceCard({ item, type, index }) {
